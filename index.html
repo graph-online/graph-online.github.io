@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+
+<script>
+
+$(document).ready(function() {
+	var brow = $.browser;
+	if (brow.safari == true){
+		$('.main').css('display','-webkit-box');
+		$('.main').css('display','-webkit-flex');
+	}
+	google.charts.load('current', {packages: ['corechart', 'bar']});
+});
+
+//experiment parameters
+var brow = [];
+
+//true value of two within-subjects conditions
+var A = .5;
+var B = .5;
+
+var nSims = 1;  //number of simulations to run (for calulating FA CI)
+var nExp = 10000; //number of "experiments" to simulate (100000 usually good #)
+var nTrials = 50; //number of trials per subject
+var nSubs = 16; //number of subjects in first round of  data collection
+var nSubs2 = 8; //number of subjects in supplemental round of data collection
+var do_supplement = 0; //perform the supplement if in critical range
+
+var dataArrayA = [];
+var dataArrayB = [];
+var mean_dataArrayA = [];
+var mean_dataArrayB = [];
+var p = [];
+var p_list = [];
+var p_list_raw = [];
+var pdesired = [];
+var FA = [];
+var count = 0;
+var count2 = 0;
+var zzz = [];
+var cols = new Array(100); 
+var pcont = [];	
+var pcrit = [];
+var pcrit2 = [];
+var maxy = [];
+var pcounts = [];
+var zzz = new Array(100);
+var db_link = [];
+var main_data = [];
+
+
+function StartProgram(){
+	count = 0;
+	count2 = 0;
+	zzz = [];
+	dataArrayA = [];
+	dataArrayB = [];
+    mean_dataArrayA = [];
+    mean_dataArrayB = [];
+    p = [];
+	p_list = [];
+ 	p_list_raw = [];
+ 	pdesired = [];
+	FA = [];
+	zzz = [];
+    cols = new Array(100); 
+    pcont = [];	
+    pcrit = [];
+    pcrit2 = [];
+    maxy = [];
+    pcounts = [];
+    zzz = new Array(100);
+	nExp = Number(frm1.exp.value); //number of "experiments" to simulate (100000 usually good #)
+	nTrials = Number(frm1.trials.value); //number of trials per subject
+	nSubs = Number(frm1.n.value);
+	pdesired = Number(frm1.pdesired.value);
+	pcrit = Number(frm1.pcrit.value);
+	do_supplement = Number(frm1.supp.value);
+	nSubs2 = Number(frm1.n2.value);
+	pcont = Number(frm1.pcont.value);
+	pcrit2 = Number(frm1.pcrit2.value);
+	dataArrayA = new Array(nExp);
+	dataArrayB = new Array(nExp);
+	mean_dataArrayA = new Array(nExp);
+	mean_dataArrayB = new Array(nExp);
+	p = new Array(nExp);
+	FA = new Array(nExp);
+	$("#sim_button").hide();
+	$("#refresh_button").show();
+	$("#pholder").show();
+	$("#chart_div").hide();
+	$("#FA_rate").hide();
+	for (var i = 0; i < 100; i++){
+		pcounts[i] = 0;
+	}
+	RunSim(RunLoop);
+}
+
+function GetData(){
+	db_link = frm2.file_name.value;
+	db_link2 = db_link.substring(0, db_link.indexOf('?')+1) + 'raw=1';
+	$.get(db_link2, function(json) {
+		main_data = json;
+	});
+}
+
+
+function RunSim(callback){
+	//generate data
+		for (var a = count2; a < count2 + 99; a++) {
+			count++;
+			if (count > nExp) { 
+				break; 
+			}
+			dataArrayA = new Array(nSubs);
+			dataArrayB = new Array(nSubs);
+			mean_dataArrayA = new Array(nSubs);
+			mean_dataArrayB = new Array(nSubs);
+			for (var b = 0; b < nSubs; b++){
+				dataArrayA[b] = new Array(nTrials);
+				dataArrayB[b] = new Array(nTrials);
+				for (var c = 0; c < nTrials; c++){
+					dataArrayA[b][c] = Number(Math.random() < A);
+					dataArrayB[b][c] = Number(Math.random() < B);
+				}
+			//collapse across subjects, creating nExp * nSubs array of mean scores	
+			mean_dataArrayA[b] = sum(dataArrayA[b])/dataArrayA[b].length;
+			mean_dataArrayB[b] = sum(dataArrayB[b])/dataArrayB[b].length;
+			}
+			//for each experiment, calculate a pvalue
+			p = ttest(mean_dataArrayA, mean_dataArrayB);
+			if (p == 0){ // make sure very low p-values get binned correctly (from 0:.01)
+				p = p + .000000001;
+			}
+			if (isNaN(p)){ // if perfectly at floor or ceiling, make p = 1
+				p = 1;
+			}
+			FA[a] = Number(p < pcrit);
+			p_list[a] = p;
+
+			if (do_supplement == 1){
+				if (p >= pcrit && p < pcont){
+					for (var b2 = nSubs; b2 < nSubs + nSubs2; b2++){
+						dataArrayA[b2] = new Array(nTrials);
+						dataArrayB[b2] = new Array(nTrials);
+						for (var c2 = 0; c2 < nTrials; c2++){
+							dataArrayA[b2][c2] = Number(Math.random() < A);
+							dataArrayB[b2][c2] = Number(Math.random() < B);
+						}
+					//collapse across subjects, creating nExp * nSubs array of mean scores	
+					mean_dataArrayA[b2] = sum(dataArrayA[b2])/dataArrayA[b2].length;
+					mean_dataArrayB[b2] = sum(dataArrayB[b2])/dataArrayB[b2].length;
+					}
+				}
+				p = ttest(mean_dataArrayA, mean_dataArrayB);
+				if (p == 0){ // make sure very low p-values get binned correctly (from 0:.01)
+					p = p + .000000001;
+				}
+				if (isNaN(p)){ // if perfectly at floor or ceiling, make p = 1
+					p = 1;
+				}
+				FA[a] = Number(p < pcrit2);
+				p_list[a] = p;
+			}
+			
+			pcounts[Math.ceil(p*100) - 1]++;
+		}
+
+		callback();
+}
+
+
+function RunLoop(){
+    	count2 = count + 0;
+		if (count < nExp){
+		    var pc = 100*((count)/(nExp));
+    		$('#progress').css('width', pc + '%');
+      		setTimeout(function () 
+			{ RunSim(RunLoop) },10);
+		} else {
+			$('#pholder').hide();
+			var c = 0;
+			for (var i = 0; i < 1; i = i + .01){
+				zzz[c] = new Array(2);
+				zzz[c] = [i+.01, pcounts[c]];
+				c++;
+			}
+			maxy = Math.max.apply(Math, pcounts);
+			google.charts.setOnLoadCallback(drawBasic);
+			//return(FA);
+			
+		}
+}
+
+function ttest(array1, array2){
+
+//create difference vector
+var diff_vect = new Array(array1.length);
+for (var i = 0; i < array1.length; i++) {
+	diff_vect[i] = array1[i] - array2[i];
+}
+var sample_size = diff_vect.length;
+var df = sample_size - 1;
+var mean_diff = sum(diff_vect)/diff_vect.length;
+var std_diff = standardDeviation(diff_vect);
+var ser = std_diff/Math.pow(sample_size,.5);
+var tval =  mean_diff/ser;
+var p = CalcT(tval, df);
+return(p);
+}
+
+function drawBasic() {
+
+      var data = new google.visualization.DataTable();
+      data.addColumn('number', 'P value');
+      data.addColumn('number', 'Count');
+
+      data.addRows(zzz);
+	  
+
+	  var options = {
+        titlePosition: 'none',
+        legend: 'none',
+        bar: {groupWidth: '75%'},
+        //colors: cols,
+        hAxis: {
+          title: 'P value',
+          titleTextStyle: {italic: false},
+          titleFontSize: 20,
+          ticks: [.05, .20, .40, .60, .80, 1.00],
+          gridlines: {
+        	color: 'transparent'
+    	  },
+          viewWindow: {
+            min: 0,
+            max: 1.01,
+          }
+        },
+        vAxis: {
+          title: 'Count',
+          titleFontSize: 20,
+          titleTextStyle: {italic: false},
+          //ticks: [0, .05, .20, .40, .60, .80, 1.00],
+          viewWindow: {
+            min: 0,
+            max: maxy + (1/3) * maxy,
+          }
+        }
+      };
+	  
+      var chart = new google.visualization.ColumnChart(
+        document.getElementById('chart_div'));
+        var far = sum(FA)/FA.length;
+        far = String(far);
+        far = far.substring(0,5);
+        $("#FA_rate").html('False Alarm Rate: ' + far);
+        var fa_width =  $("#FA_rate").css('width');
+        fa_width = parseInt(fa_width)/2 - 15;
+	  	//$("#FA_rate").css('margin-left', -fa_width+"px");
+	  	$("#exp_summary").show();
+	  	var ex_sum = 'Experiment Summary:' + '<br>' + '- comparing two identical conditions, within-subjects' + 
+	  	    '<br>' + '- simulating how often a significant difference is falsely detected' + '<br><br>' + 
+	  	     '1. Ran ' + nSubs + ' subjects.' +'<br>' + '2. Analyzed Data (paired-sample ttest):' + 
+	  	     '<br>' + '- if p < ' +  pcrit + ', declared results significant.';
+	  	if (do_supplement == 0){
+	  		ex_sum = ex_sum + '<br>' + '- if p >= ' + pcrit + ', declared results insignificant.';
+	  	} else {
+	  		ex_sum = ex_sum + '<br>' + '- if p >= ' + pcont + ', declared results insignificant.';
+	  		ex_sum = ex_sum + '<br>' + '- if p >= ' + pcrit + ' ' + 'and p < ' + pcont + ', supplemented data.';
+	  		ex_sum = ex_sum + '<br>' + '3. When supplementing data, ran an additional ' + nSubs2 + ' subjects.';
+	  		ex_sum = ex_sum + '<br>' + '- if p < ' + pcrit2 + ', declared results significant.';
+	  		ex_sum = ex_sum + '<br>' + '- if p >= ' + pcrit2 + ', declared results insignificant.';
+	  	}
+	  	ex_sum = ex_sum + '<br><br>' + 'Desired False Alarm Rate: ' + pdesired;
+	  	ex_sum = ex_sum + '<br>' + 'True False Alarm Rate: ' + far;
+	  	$("#exp_summary").html(ex_sum); 
+	  	$("#sim_button").show();
+		$("#refresh_button").hide();
+		$("#chart_div").show();
+		$("#FA_rate").show();
+		$("#t2").hide();
+	  	
+
+      chart.draw(data, options);
+      
+    }
+
+function standardDeviation(values){
+var x = AddToArray(values, -1*(sum(values)/values.length));
+var x2 = PowArrayElements(x, 2);
+var x3 = MultiplyArrayXScalar(x2, 1/(values.length -1));
+var x4 = sum(x3);
+var x5 = Math.pow(x4,.5);
+return x5;
+
+}
+
+
+var PiD2=Math.PI/2; 
+function CalcT(t,df) { 
+	var pt1 = Fmt(StudT(t,df)) ;
+	p_list_raw.push(pt1);
+	return Number(pt1);
+}
+
+function StudT(t,n) {
+		t=Math.abs(t); var w=t/Math.sqrt(n); var th=Math.atan(w)
+		if(n==1) { return 1-th/PiD2 }
+		var sth=Math.sin(th); var cth=Math.cos(th)
+		if((n%2)==1)
+			{ return 1-(th+sth*cth*StatCom(cth*cth,2,n-3,-1))/PiD2 }
+			else
+			{ return 1-sth*StatCom(cth*cth,1,n-3,-1) }
+}
+
+function Fmt(x) { 
+	var v
+	if(x>=0) { v=''+(x+0.0000005) } else { v=''+(x-0.0000005) }
+	return v.substring(0,v.indexOf('.')+7)
+}
+
+function StatCom(q,i,j,b) {
+		var zz=1; var z=zz; var k=i; while(k<=j) { zz=zz*q*k/(k-b); z=z+zz; k=k+2 }
+		return z
+}
+
+function AddToArray(a, v){
+	var b = a.slice(0);
+	var OP = [];
+	for (var c = 0; c<b.length;  c++){
+		OP[c] = b[c] + v;
+		}
+		return OP;
+}
+
+function sum(a){
+  var scount = 0;
+   for(var i=0, n=a.length; i < n; i++) 
+   { 
+      scount += a[i]; 
+   }
+   return scount;
+}
+
+function MultiplyArrayXScalar(a, s){
+	var b = a.slice(0);
+	var OP2 = [];
+	for (var c = 0; c < b.length; c++){ 
+		OP2[c] = b[c] * s;
+	}	
+	return OP2;
+}
+
+function PowArrayElements(a, p){
+	var b = a.slice(0);
+	var OP1 = [];
+	for (var c = 0; c < b.length; c++){ 
+		OP1[c] = Math.pow(b[c], p);
+	}	
+	return OP1;
+}
+
+
+</script>
+
+
+
+<style>
+#chart_div {
+	position: abolute;
+	width: 100%;
+	height: 100%;
+	display: none;
+}
+
+#FA_rate {
+	text-align: center;
+	font-weight: bold;
+	font-size: 26px;
+	white-space: nowrap;
+	margin-top: 125px;
+	display: none;
+}
+#refresh_button{
+	display: none;
+}
+
+#form_div {
+	margin-left: 20px;
+	height: 100%;
+}
+
+#t2 {
+	margin-left: -15px;
+}
+
+#pholder {
+	width: 500px;
+	height: 50px;
+	border: 4px solid black;
+}
+
+#progress {
+	background: red;
+	width: 0%;
+	height: 100%;
+}
+
+#sim_button{
+	margin-left: -10px;
+}
+
+#progress_text {
+	text-align: center;
+	font-weight: bold;
+	font-size: 26px;
+	white-space: nowrap;
+	margin-top: -36px;
+}
+
+#exp_summary {
+	display: none;
+	font-size: 15px;
+}
+
+#title {
+	font-size: 48px;
+	white-space: nowrap;
+	text-align: center;
+	vertical-align: text-middle;
+}
+
+table.table2 {
+	font-size: 12px;
+}
+
+td.label{
+	text-align: right;
+}
+td.label:hover{
+	
+}
+
+
+.container {
+  display: -webkit-flex;
+  display: -moz-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-flex-flow: row;
+  flex-flow: row;
+  height: 100%;
+  min-width: 500px;
+  max-height: 100%;
+  max-width: 100%;
+  border-collapse: separate;
+  border: 2px solid black;
+  max-width: 1450px;
+  
+}
+
+.left {
+  background-color: white;
+  width: 250px;
+  max-width: 250px;
+  min-width: 250px;
+  border: 4px solid black;
+  flex-flow: column;
+  -webkit-flex-flow: column;
+}
+
+.main {
+  background-color: black;
+  display: flex;
+  flex: 1;
+  -webkit-flex: 1;
+  flex-flow: column;
+  -webkit-flex-flow: column;
+  max-width: 1200px;
+
+}
+
+.col {
+  margin: 0px;
+}
+
+.top {
+	height: 100px;
+    background: white;
+    display: -webkit-box;
+	display: -webkit-flex;
+	display: -moz-box;
+	display: -ms-flexbox;
+	display: flex;
+	-webkit-flex-align: center;
+	-ms-flex-align: center;
+	-webkit-align-items: center;
+	align-items: center;
+    justify-content: center;
+    -webkit-justify-content: center;
+    border: 4px solid black;
+  }
+
+.bottom {
+	flex: 1;
+	-webkit-flex: 1;
+    background: white;
+    display: -webkit-box;
+	display: -webkit-flex;
+	display: -moz-box;
+	display: -ms-flexbox;
+	display: flex;
+	-webkit-flex-align: center;
+	-ms-flex-align: center;
+	-webkit-align-items: center;
+	-webkit-justify-content: center;
+	align-items: center;
+    justify-content: center;
+    flex-flow: column;
+    -webkit-flex-flow: column;
+    border: 4px solid black;
+    
+  }
+  .bottom1a {
+    order: 1;
+    -webkit-order: 1;
+    background: white;
+    display: -webkit-box;
+	display: -webkit-flex;
+	display: -moz-box;
+	display: -ms-flexbox;
+	display: flex;
+	-webkit-flex-align: center;
+	-ms-flex-align: center;
+	-webkit-align-items: center;
+	align-items: center;
+    justify-content: center;
+    -webkit-justify-content: center;
+    flex-flow: column;
+    -webkit-flex-flow: column;
+    height: 0px;
+  }
+    .bottom1b {
+	flex: 1;
+	-webkit-flex: 1;
+	order: 2;
+	-webkit-order: 2;
+    background: white;
+    display: -webkit-box;
+	display: -webkit-flex;
+	display: -moz-box;
+	display: -ms-flexbox;
+	display: flex;
+	-webkit-flex-align: center;
+	-ms-flex-align: center;
+	-webkit-align-items: center;
+	align-items: center;
+    justify-content: center;
+    -webkit-justify-content: center;
+    flex-flow: column;
+    -webkit-flex-flow: column;
+    width: 100%;
+    height: 100%;
+  }
+
+ 
+</style>
+
+<body>
+
+<div class="container">
+  <nav class="nav left">
+  	<div id="form_div">
+		<form id="frm1">
+			<table id="table1"; cellspacing="5px" cellpadding="2%">
+				<tr>
+  					<td class="label">Desired &#945;</td>
+  					<td> <input type="text" name="pdesired" size="6" maxlength="5" value=".05"></td>
+  				</tr>
+  				<tr>
+  					<td class="label">p_crit</td>
+  					<td> <input type="text" name="pcrit" size="6" maxlength="5" value=".05"></td>
+  				</tr>
+  				<tr>
+  					<td class="label">N</td>
+  					<td><input type="text" name="n" size="6" maxlength="4" value="16"></td>
+  				</tr>
+  				<tr>
+  					<td class="label"># Trials</td>
+  					<td><input type="text" name="trials" size="6" maxlength="4" value="200"></td>
+  				</tr>
+  				<tr>
+  					<td class="label"># Exps</td>
+  					<td><input type="text" name="exp" size="6" maxlength="6 " value="10000"></td>
+  				</tr>
+  				<tr>
+  					<td class="label">Supplement?</td>
+  					<td><input type="text" name="supp" size="6" maxlength="1" value="0"></td>
+  				</tr>
+  				<tr>
+  					<td class="label">If yes:</td>
+  				</tr>
+  				<tr>
+  					<td class="label">p_supp</td>
+  					<td><input type="text" name="pcont" size="6" maxlength="5" value=""></td>
+  				</tr>
+  				<tr>
+  					<td class="label">N2</td>
+  					<td><input type="text" name="n2" size="6" maxlength="4" value=""></td>
+  				</tr>
+  				<tr>
+  					<td class="label">p_crit2</td>
+  					<td><input type="text" name="pcrit2" size="6" maxlength="5" value=""></td>
+  				</tr>
+  			</table>
+		</form>
+	<div id="sim_button"><button id ="main_button" onclick="StartProgram()">Begin Simulation</button></div>
+	<div id="refresh_button"><button id ="refresh">Simulating</button></div>
+	<br>
+	<div id = 't2'>
+	<table class="table2"; cellspacing="4px" cellpadding="2%">
+				<tr>
+  					<td class="label"><b>Desired &#945;</b></td>
+  					<td>desired false alarm rate (usually .05)</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>p_crit</b></td>
+  					<td>p value used to determine significance after initial data collection</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>N</b></td>
+  					<td># of subjects for initial data collection</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b># Trials</b></td>
+  					<td># of trials for each experiment condition</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b># Exps</b></td>
+  					<td># experiments to simulate</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>Supplement?</b></td>
+  					<td>run more subjects if p < p_supp? (1 = yes, 0 = no)</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>If yes:</b></td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>p_supp</b></td>
+  					<td>run more subjects if initial p < p_supp</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>N2</b></td>
+  					<td># additional subjects to run when supplementing data</td>
+  				</tr>
+  				<tr>
+  					<td class="label"><b>p_crit2</b></td>
+  					<td>p value used to determine significance after supplemental data collection</td>
+  				</tr>
+  			</table></div>
+	<div id="exp_summary"></div>
+
+	</div>
+  </nav>
+  
+  <section class="main">
+      <div class="col top"><div id="title">False Alarm Rate Simulator</div></div>
+    	<div class="col bottom">
+    			
+    			<div class="col bottom1a" style="z-index: 2"><div id="FA_rate"></div></div>
+				<div class="col bottom1b" style="z-index: 1">
+					<div id="pholder"><div id="progress"></div><div id="progress_text">Simulation Progress</div></div>
+					<div id="chart_div"></div>
+				</div>
+				
+				
+				
+    	</div>
+  </section>
+</div>
+
+<div>Enter Dropbox Link To Data Here:<form id="frm2"><input name="file_name"></form><div id="sim_button"><button id ="data_button" onclick="GetData()">Load Data</button></div></div>
+
+
+</body>
